@@ -17,7 +17,7 @@ export default class OpenRouterPlugin extends Plugin {
 		// Command: Process Selected Text
 		this.addCommand({
 			id: 'process-selected-text',
-			name: 'Process selected text with AI',
+			name: 'AI: Process selected text',
 			editorCallback: (editor: Editor, _view: MarkdownView) => {
 				const selection = editor.getSelection();
 				if (!selection || selection.trim() === '') {
@@ -36,7 +36,7 @@ export default class OpenRouterPlugin extends Plugin {
 		// Command: Process Active Note
 		this.addCommand({
 			id: 'process-active-note',
-			name: 'Process active note with AI',
+			name: 'AI: Process active note',
 			checkCallback: (checking: boolean) => {
 				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
 				if (markdownView) {
@@ -71,7 +71,7 @@ export default class OpenRouterPlugin extends Plugin {
 		// Command: Insert AI Response at Cursor
 		this.addCommand({
 			id: 'insert-at-cursor',
-			name: 'Insert AI response at cursor',
+			name: 'AI: Insert at cursor',
 			editorCallback: (editor: Editor, _view: MarkdownView) => {
 				new PromptModal(this.app, async (prompt) => {
 					await this.processText('', prompt, (result) => {
@@ -85,7 +85,7 @@ export default class OpenRouterPlugin extends Plugin {
 		// Command: Create New Note with AI
 		this.addCommand({
 			id: 'create-new-note',
-			name: 'Create new note with AI response',
+			name: 'AI: Create new note',
 			callback: () => {
 				new PromptModal(this.app, async (prompt) => {
 					await this.processText('', prompt, async (result) => {
@@ -97,6 +97,54 @@ export default class OpenRouterPlugin extends Plugin {
 
 		// Add settings tab
 		this.addSettingTab(new OpenRouterSettingTab(this.app, this));
+
+		// Register context menu for editor
+		this.registerEvent(
+			this.app.workspace.on('editor-menu', (menu, editor, view) => {
+				// Add "Process selected text" if text is selected
+				const selection = editor.getSelection();
+				if (selection && selection.trim() !== '') {
+					menu.addItem((item) => {
+						item
+							.setTitle('AI: Process selected text')
+							.setIcon('sparkles')
+							.onClick(async () => {
+								new PromptModal(this.app, async (prompt) => {
+									await this.processText(selection, prompt, (result) => {
+										editor.replaceSelection(result);
+									});
+								}, 'Process Selected Text').open();
+							});
+					});
+				}
+
+				// Always add "Process active note"
+				menu.addItem((item) => {
+					item
+						.setTitle('AI: Process active note')
+						.setIcon('file-text')
+						.onClick(async () => {
+							const content = editor.getValue();
+							if (!content || content.trim() === '') {
+								new Notice('The active note is empty.');
+								return;
+							}
+
+							new PromptModal(this.app, async (prompt) => {
+								await this.processText(content, prompt, async (result) => {
+									const choice = await this.showResultActionModal(result);
+									if (choice === 'cursor') {
+										const cursor = editor.getCursor();
+										editor.replaceRange('\n\n' + result, cursor);
+									} else if (choice === 'new-note') {
+										await this.createNewNote(result, prompt);
+									}
+								});
+							}, 'Process Active Note').open();
+						});
+				});
+			})
+		);
 	}
 
 	onunload() {
