@@ -7,6 +7,12 @@ export interface OpenRouterSettings {
 	maxTokens: number;
 	systemPrompt: string;
 	outputFolder: string;
+	// Rate limiting
+	enableRateLimiting: boolean;
+	maxRequestsPerMinute: number;
+	// Content security
+	enableContentScanning: boolean;
+	scanAction: 'warn' | 'block';
 }
 
 export const DEFAULT_SETTINGS: OpenRouterSettings = {
@@ -15,7 +21,11 @@ export const DEFAULT_SETTINGS: OpenRouterSettings = {
 	temperature: 0.7,
 	maxTokens: 1000,
 	systemPrompt: '',
-	outputFolder: ''
+	outputFolder: '',
+	enableRateLimiting: true,
+	maxRequestsPerMinute: 20,
+	enableContentScanning: true,
+	scanAction: 'warn'
 };
 
 export interface OpenRouterMessage {

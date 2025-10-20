@@ -1,21 +1,38 @@
 import { Notice } from 'obsidian';
 import { OpenRouterRequest, OpenRouterResponse, OpenRouterError } from './types';
+import { RateLimiter, RateLimitConfig } from './rate-limiter';
 
 export class OpenRouterService {
 	private readonly apiEndpoint = 'https://openrouter.ai/api/v1/chat/completions';
 	private apiKey: string;
+	private rateLimiter: RateLimiter;
 
-	constructor(apiKey: string) {
+	constructor(apiKey: string, rateLimitConfig: RateLimitConfig) {
 		this.apiKey = apiKey;
+		this.rateLimiter = new RateLimiter(rateLimitConfig);
 	}
 
 	updateApiKey(apiKey: string): void {
 		this.apiKey = apiKey;
 	}
 
+	updateRateLimitConfig(config: RateLimitConfig): void {
+		this.rateLimiter.updateConfig(config);
+	}
+
+	getRateLimiter(): RateLimiter {
+		return this.rateLimiter;
+	}
+
 	async sendRequest(request: OpenRouterRequest): Promise<string> {
 		if (!this.apiKey || this.apiKey.trim() === '') {
 			throw new Error('API key is not configured. Please set your OpenRouter API key in plugin settings.');
+		}
+
+		// Check rate limit
+		if (!this.rateLimiter.canMakeRequest()) {
+			const resetTime = this.rateLimiter.getFormattedResetTime();
+			throw new Error(`Rate limit exceeded. Please wait ${resetTime} before trying again.`);
 		}
 
 		try {
@@ -56,6 +73,9 @@ export class OpenRouterService {
 			if (!content || content.trim() === '') {
 				throw new Error('API returned empty content. Please try again.');
 			}
+
+			// Record successful request
+			this.rateLimiter.recordRequest();
 
 			return content;
 

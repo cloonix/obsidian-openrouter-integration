@@ -2,17 +2,36 @@ import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, T
 import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest } from './types';
 import { OpenRouterService } from './openrouter-service';
 import { PromptModal } from './prompt-modal';
+import { ContentScanner } from './content-scanner';
+import { SecurityWarningModal } from './security-warning-modal';
 
 export default class OpenRouterPlugin extends Plugin {
 	settings: OpenRouterSettings;
 	openRouterService: OpenRouterService;
+	contentScanner: ContentScanner;
 	private isProcessing: boolean = false;
+	private statusBarItem: HTMLElement;
 
 	async onload() {
 		await this.loadSettings();
 
 		// Initialize OpenRouter service
-		this.openRouterService = new OpenRouterService(this.settings.apiKey);
+		this.openRouterService = new OpenRouterService(this.settings.apiKey, {
+			enabled: this.settings.enableRateLimiting,
+			maxRequestsPerMinute: this.settings.maxRequestsPerMinute
+		});
+
+		// Initialize content scanner
+		this.contentScanner = new ContentScanner();
+
+		// Add status bar item for rate limit info
+		this.statusBarItem = this.addStatusBarItem();
+		this.updateStatusBar();
+
+		// Update status bar every 10 seconds
+		this.registerInterval(
+			window.setInterval(() => this.updateStatusBar(), 10000)
+		);
 
 		// Command: Process Selected Text
 		this.addCommand({
@@ -159,6 +178,36 @@ export default class OpenRouterPlugin extends Plugin {
 		await this.saveData(this.settings);
 		// Update service with new API key
 		this.openRouterService.updateApiKey(this.settings.apiKey);
+		// Update rate limit config
+		this.openRouterService.updateRateLimitConfig({
+			enabled: this.settings.enableRateLimiting,
+			maxRequestsPerMinute: this.settings.maxRequestsPerMinute
+		});
+		// Update status bar
+		this.updateStatusBar();
+	}
+
+	private updateStatusBar(): void {
+		if (!this.settings.enableRateLimiting) {
+			this.statusBarItem.setText('');
+			return;
+		}
+
+		const rateLimiter = this.openRouterService.getRateLimiter();
+		const remaining = rateLimiter.getRemainingRequests();
+		const max = this.settings.maxRequestsPerMinute;
+
+		if (remaining === 0) {
+			const resetTime = rateLimiter.getFormattedResetTime();
+			this.statusBarItem.setText(`AI: Rate limited (reset in ${resetTime})`);
+			this.statusBarItem.setAttribute('style', 'color: var(--text-error);');
+		} else if (remaining <= 3) {
+			this.statusBarItem.setText(`AI: ${remaining}/${max} requests`);
+			this.statusBarItem.setAttribute('style', 'color: var(--text-warning);');
+		} else {
+			this.statusBarItem.setText(`AI: ${remaining}/${max} requests`);
+			this.statusBarItem.setAttribute('style', 'color: var(--text-muted);');
+		}
 	}
 
 	private async processText(
@@ -173,9 +222,41 @@ export default class OpenRouterPlugin extends Plugin {
 		}
 
 		this.isProcessing = true;
-		const notice = new Notice('Processing with AI...', 0);
+		let notice: Notice | null = null;
 
 		try {
+			// Content security scanning
+			if (this.settings.enableContentScanning) {
+				const contentToScan = text + '\n' + prompt;
+				const scanResult = this.contentScanner.scan(contentToScan);
+
+				if (scanResult.hasSensitiveContent) {
+					if (this.settings.scanAction === 'block') {
+						this.isProcessing = false;
+						const summary = this.contentScanner.getSummary(scanResult);
+						new Notice(`Request blocked: ${summary}`, 8000);
+						return;
+					} else if (this.settings.scanAction === 'warn') {
+						const userConfirmed = await new Promise<boolean>((resolve) => {
+							new SecurityWarningModal(
+								this.app,
+								scanResult,
+								() => resolve(true),
+								() => resolve(false)
+							).open();
+						});
+
+						if (!userConfirmed) {
+							this.isProcessing = false;
+							new Notice('Request cancelled by user.');
+							return;
+						}
+					}
+				}
+			}
+
+			notice = new Notice('Processing with AI...', 0);
+
 			// Build messages array
 			const messages = [];
 
@@ -215,11 +296,16 @@ export default class OpenRouterPlugin extends Plugin {
 			notice.hide();
 			new Notice('AI response received!');
 
+			// Update status bar to reflect used request
+			this.updateStatusBar();
+
 			// Execute success callback
 			await onSuccess(result);
 
 		} catch (error) {
-			notice.hide();
+			if (notice) {
+				notice.hide();
+			}
 			if (error instanceof Error) {
 				new Notice(`Error: ${error.message}`, 8000);
 			} else {
@@ -449,6 +535,57 @@ class OpenRouterSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.outputFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.outputFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Security & Rate Limits heading
+		containerEl.createEl('h3', { text: 'Security & Rate Limits', attr: { style: 'margin-top: 2em;' } });
+
+		// Enable Rate Limiting
+		new Setting(containerEl)
+			.setName('Enable rate limiting')
+			.setDesc('Limit the number of API requests to prevent excessive usage')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableRateLimiting)
+				.onChange(async (value) => {
+					this.plugin.settings.enableRateLimiting = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Max Requests Per Minute
+		new Setting(containerEl)
+			.setName('Max requests per minute')
+			.setDesc('Maximum number of API requests allowed per minute (1-60)')
+			.addSlider(slider => slider
+				.setLimits(1, 60, 1)
+				.setValue(this.plugin.settings.maxRequestsPerMinute)
+				.setDynamicTooltip()
+				.onChange(async (value) => {
+					this.plugin.settings.maxRequestsPerMinute = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Enable Content Scanning
+		new Setting(containerEl)
+			.setName('Enable content scanning')
+			.setDesc('Scan content for potentially sensitive information before sending to AI')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableContentScanning)
+				.onChange(async (value) => {
+					this.plugin.settings.enableContentScanning = value;
+					await this.plugin.saveSettings();
+				}));
+
+		// Content Scanning Action
+		new Setting(containerEl)
+			.setName('When sensitive content detected')
+			.setDesc('Choose how to handle potentially sensitive content')
+			.addDropdown(dropdown => dropdown
+				.addOption('warn', 'Warn and ask for confirmation')
+				.addOption('block', 'Block and prevent sending')
+				.setValue(this.plugin.settings.scanAction)
+				.onChange(async (value: 'warn' | 'block') => {
+					this.plugin.settings.scanAction = value;
 					await this.plugin.saveSettings();
 				}));
 
