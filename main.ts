@@ -72,7 +72,10 @@ export default class OpenRouterPlugin extends Plugin {
 							await this.processText(content, prompt, async (result) => {
 								// Ask user how to handle the result
 								const choice = await this.showResultActionModal(result);
-								if (choice === 'cursor') {
+								if (choice === 'replace') {
+									editor.setValue(result);
+									new Notice('Note replaced with AI response');
+								} else if (choice === 'cursor') {
 									const cursor = editor.getCursor();
 									editor.replaceRange('\n\n' + result, cursor);
 								} else if (choice === 'new-note') {
@@ -152,7 +155,10 @@ export default class OpenRouterPlugin extends Plugin {
 							new PromptModal(this.app, async (prompt) => {
 								await this.processText(content, prompt, async (result) => {
 									const choice = await this.showResultActionModal(result);
-									if (choice === 'cursor') {
+									if (choice === 'replace') {
+										editor.setValue(result);
+										new Notice('Note replaced with AI response');
+									} else if (choice === 'cursor') {
 										const cursor = editor.getCursor();
 										editor.replaceRange('\n\n' + result, cursor);
 									} else if (choice === 'new-note') {
@@ -365,7 +371,7 @@ export default class OpenRouterPlugin extends Plugin {
 		}
 	}
 
-	private async showResultActionModal(result: string): Promise<'cursor' | 'new-note' | 'cancel'> {
+	private async showResultActionModal(result: string): Promise<'cursor' | 'new-note' | 'replace' | 'cancel'> {
 		return new Promise((resolve) => {
 			const modal = new ResultActionModal(
 				this.app,
@@ -380,9 +386,9 @@ export default class OpenRouterPlugin extends Plugin {
 // Modal for choosing how to handle results from processing active note
 class ResultActionModal extends PromptModal {
 	private result: string;
-	private onChoose: (action: 'cursor' | 'new-note' | 'cancel') => void;
+	private onChoose: (action: 'cursor' | 'new-note' | 'replace' | 'cancel') => void;
 
-	constructor(app: App, result: string, onChoose: (action: 'cursor' | 'new-note' | 'cancel') => void) {
+	constructor(app: App, result: string, onChoose: (action: 'cursor' | 'new-note' | 'replace' | 'cancel') => void) {
 		super(app, () => { }, 'AI Response Ready');
 		this.result = result;
 		this.onChoose = onChoose;
@@ -406,6 +412,16 @@ class ResultActionModal extends PromptModal {
 		// Buttons container
 		const buttonContainer = contentEl.createDiv({
 			attr: { style: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1em;' }
+		});
+
+		// Replace note button
+		const replaceButton = buttonContainer.createEl('button', {
+			text: 'Replace note',
+			cls: 'mod-warning'
+		});
+		replaceButton.addEventListener('click', () => {
+			this.close();
+			this.onChoose('replace');
 		});
 
 		// Insert at cursor button
