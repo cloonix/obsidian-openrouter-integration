@@ -1,5 +1,8 @@
 // TypeScript interfaces for OpenRouter AI Assistant Plugin
 
+// Default system prompt for concise responses
+export const DEFAULT_CONCISE_PROMPT = "Return only the requested output without explanations, commentary, or additional text. For translations, return only the translated text. For grammar corrections, return only the corrected text. Do not add markdown formatting unless specifically requested.";
+
 export interface OpenRouterSettings {
 	apiKey: string;
 	model: string;
@@ -19,7 +22,7 @@ export const DEFAULT_SETTINGS: OpenRouterSettings = {
 	apiKey: '',
 	model: 'openai/gpt-4o-mini',
 	temperature: 0.7,
-	maxTokens: 1000,
+	maxTokens: 500,
 	systemPrompt: '',
 	outputFolder: '',
 	enableRateLimiting: true,

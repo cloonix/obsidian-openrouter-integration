@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
-import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest } from './types';
+import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest, DEFAULT_CONCISE_PROMPT } from './types';
 import { OpenRouterService } from './openrouter-service';
 import { PromptModal } from './prompt-modal';
 import { ContentScanner } from './content-scanner';
@@ -72,7 +72,10 @@ export default class OpenRouterPlugin extends Plugin {
 							await this.processText(content, prompt, async (result) => {
 								// Ask user how to handle the result
 								const choice = await this.showResultActionModal(result);
-								if (choice === 'cursor') {
+								if (choice === 'replace') {
+									editor.setValue(result);
+									new Notice('Note replaced with AI response');
+								} else if (choice === 'cursor') {
 									const cursor = editor.getCursor();
 									editor.replaceRange('\n\n' + result, cursor);
 								} else if (choice === 'new-note') {
@@ -152,7 +155,10 @@ export default class OpenRouterPlugin extends Plugin {
 							new PromptModal(this.app, async (prompt) => {
 								await this.processText(content, prompt, async (result) => {
 									const choice = await this.showResultActionModal(result);
-									if (choice === 'cursor') {
+									if (choice === 'replace') {
+										editor.setValue(result);
+										new Notice('Note replaced with AI response');
+									} else if (choice === 'cursor') {
 										const cursor = editor.getCursor();
 										editor.replaceRange('\n\n' + result, cursor);
 									} else if (choice === 'new-note') {
@@ -257,16 +263,21 @@ export default class OpenRouterPlugin extends Plugin {
 
 			notice = new Notice('Processing with AI...', 0);
 
+			// Track start time for elapsed time display
+			const startTime = Date.now();
+
 			// Build messages array
 			const messages = [];
 
-			// Add system prompt if configured
-			if (this.settings.systemPrompt && this.settings.systemPrompt.trim() !== '') {
-				messages.push({
-					role: 'system' as const,
-					content: this.settings.systemPrompt
-				});
-			}
+			// Add system prompt: use custom if set, otherwise use default concise prompt
+			const systemPrompt = this.settings.systemPrompt && this.settings.systemPrompt.trim() !== ''
+				? this.settings.systemPrompt
+				: DEFAULT_CONCISE_PROMPT;
+
+			messages.push({
+				role: 'system' as const,
+				content: systemPrompt
+			});
 
 			// Add user message
 			if (text && text.trim() !== '') {
@@ -294,7 +305,10 @@ export default class OpenRouterPlugin extends Plugin {
 
 			// Hide loading notice
 			notice.hide();
-			new Notice('AI response received!');
+
+			// Calculate and display elapsed time
+			const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+			new Notice(`AI response received! (${elapsedSeconds}s)`);
 
 			// Update status bar to reflect used request
 			this.updateStatusBar();
@@ -357,7 +371,7 @@ export default class OpenRouterPlugin extends Plugin {
 		}
 	}
 
-	private async showResultActionModal(result: string): Promise<'cursor' | 'new-note' | 'cancel'> {
+	private async showResultActionModal(result: string): Promise<'cursor' | 'new-note' | 'replace' | 'cancel'> {
 		return new Promise((resolve) => {
 			const modal = new ResultActionModal(
 				this.app,
@@ -372,9 +386,9 @@ export default class OpenRouterPlugin extends Plugin {
 // Modal for choosing how to handle results from processing active note
 class ResultActionModal extends PromptModal {
 	private result: string;
-	private onChoose: (action: 'cursor' | 'new-note' | 'cancel') => void;
+	private onChoose: (action: 'cursor' | 'new-note' | 'replace' | 'cancel') => void;
 
-	constructor(app: App, result: string, onChoose: (action: 'cursor' | 'new-note' | 'cancel') => void) {
+	constructor(app: App, result: string, onChoose: (action: 'cursor' | 'new-note' | 'replace' | 'cancel') => void) {
 		super(app, () => { }, 'AI Response Ready');
 		this.result = result;
 		this.onChoose = onChoose;
@@ -398,6 +412,16 @@ class ResultActionModal extends PromptModal {
 		// Buttons container
 		const buttonContainer = contentEl.createDiv({
 			attr: { style: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1em;' }
+		});
+
+		// Replace note button
+		const replaceButton = buttonContainer.createEl('button', {
+			text: 'Replace note',
+			cls: 'mod-warning'
+		});
+		replaceButton.addEventListener('click', () => {
+			this.close();
+			this.onChoose('replace');
 		});
 
 		// Insert at cursor button
@@ -516,9 +540,9 @@ class OpenRouterSettingTab extends PluginSettingTab {
 		// System Prompt
 		new Setting(containerEl)
 			.setName('System Prompt')
-			.setDesc('Optional: Default instructions for the AI (applied to all requests)')
+			.setDesc('Custom instructions for the AI. Leave empty for concise responses (recommended). Add custom instructions to override default behavior.')
 			.addTextArea(text => text
-				.setPlaceholder('You are a helpful assistant...')
+				.setPlaceholder('Leave empty for concise responses...')
 				.setValue(this.plugin.settings.systemPrompt)
 				.onChange(async (value) => {
 					this.plugin.settings.systemPrompt = value;
