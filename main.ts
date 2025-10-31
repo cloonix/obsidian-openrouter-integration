@@ -205,15 +205,17 @@ export default class OpenRouterPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-		// Update service with new API key
-		this.openRouterService.updateApiKey(this.settings.apiKey);
-		// Update rate limit config
-		this.openRouterService.updateRateLimitConfig({
-			enabled: this.settings.enableRateLimiting,
-			maxRequestsPerMinute: this.settings.maxRequestsPerMinute
-		});
-		// Update status bar
-		this.updateStatusBar();
+		// Update service with new API key (only if service is initialized)
+		if (this.openRouterService) {
+			this.openRouterService.updateApiKey(this.settings.apiKey);
+			// Update rate limit config
+			this.openRouterService.updateRateLimitConfig({
+				enabled: this.settings.enableRateLimiting,
+				maxRequestsPerMinute: this.settings.maxRequestsPerMinute
+			});
+			// Update status bar
+			this.updateStatusBar();
+		}
 	}
 
 	private updateStatusBar(): void {
