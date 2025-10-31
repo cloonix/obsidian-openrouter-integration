@@ -1,6 +1,6 @@
 {
 	"name": "openrouter-ai-assistant",
-	"version": "v1.3.0-beta",
+	"version": "v1.3.1-beta",
 	"description": "AI-powered text processing for Obsidian using OpenRouter API",
 	"main": "main.js",
 	"scripts": {
