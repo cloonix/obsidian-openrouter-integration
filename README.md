@@ -1,13 +1,16 @@
 # OpenRouter AI Assistant for Obsidian
 
-AI-powered text processing for Obsidian using OpenRouter's API. Process selections, generate content, and create notes with AI assistance.
+> **Why this plugin?** I wanted simple AI integration for writing and improving text in Obsidian. Other AI plugins felt bloated with features I didn't need—chat interfaces, conversation history, complex UIs. I just wanted to select text, ask AI to improve it, and get back clean results. So I built this.
 
-## Features
+Simple, focused AI text processing using OpenRouter's API. Select text, describe what you want, get the result—nothing more, nothing less.
 
-- **Process Selected Text** - Transform selected text with AI prompts
-- **Process Active Note** - Send entire note to AI, insert result or create new note
-- **Insert at Cursor** - Generate AI content at cursor position
-- **Create New Note** - Generate AI content as a new note with frontmatter
+## What It Does
+
+- **Select & transform** text (fix grammar, translate, rewrite, summarize)
+- **Process entire notes** (replace, insert at cursor, or create new note)
+- **Generate content** from prompts
+- **Concise responses by default** (no chatty explanations, just the result)
+- **Context menu integration** (right-click → AI commands)
 
 ## Installation
 
@@ -16,55 +19,48 @@ AI-powered text processing for Obsidian using OpenRouter's API. Process selectio
 3. Copy both files into this folder
 4. Reload Obsidian and enable the plugin
 
-## Setup
+## Quick Start
 
-1. Get an API key from [OpenRouter](https://openrouter.ai/keys)
-2. Open plugin settings in Obsidian
-3. Paste your API key
-4. Configure model and other settings (optional)
+1. Get an API key from [OpenRouter](https://openrouter.ai/keys) (pay-as-you-go, no subscription)
+2. Install plugin and add API key in settings
+3. Select text → right-click → **AI: Process selected text** → enter prompt
 
-## Usage
+That's it. Works with Command Palette (`Ctrl/Cmd+P`) or context menu (right-click).
 
-All commands are available via Command Palette (`Ctrl/Cmd+P`):
+## Common Use Cases
 
-- **Process selected text with AI** - Select text → Run command → Enter prompt → Selection replaced with AI response
-- **Process active note with AI** - Open note → Run command → Enter prompt → Choose insert location
-- **Insert AI response at cursor** - Position cursor → Run command → Enter prompt → Content inserted
-- **Create new note with AI response** - Run command → Enter prompt → New note created
+```
+Select text → "translate to German"        → get translation
+Select text → "fix grammar"                → get corrected text
+Select text → "make this more professional" → get rewritten text
+Process note → "summarize"                 → choose where to put result
+Empty prompt → "write about X"             → generate new content
+```
 
-## Settings
+## Configuration
 
-- **API Key** - Your OpenRouter API key (required)
-- **Model** - AI model to use (default: `openai/gpt-4o-mini`)
-- **Temperature** - Response randomness, 0-1 (default: 0.7)
-- **Max Tokens** - Maximum response length (default: 1000)
-- **System Prompt** - Optional default instructions
-- **Output Folder** - Where to save AI-generated notes
+**Required:**
+- API key from [OpenRouter](https://openrouter.ai/keys)
 
-Popular models: `openai/gpt-4o-mini`, `openai/gpt-4o`, `anthropic/claude-3-5-sonnet`, `meta-llama/llama-3.1-70b-instruct`
+**Optional:**
+- Model (default: `openai/gpt-4o-mini` - fast & cheap)
+- System prompt (leave empty for concise responses)
+- Rate limiting (default: 20 requests/minute)
+- Content scanning (warns about API keys/passwords before sending)
 
-See all models at [OpenRouter Models](https://openrouter.ai/models)
+Browse 200+ models at [OpenRouter](https://openrouter.ai/models) - GPT-4, Claude, Llama, Gemini, and more.
+
+## Why OpenRouter?
+
+- **One API, all models** - Switch between GPT-4, Claude, Llama without managing multiple API keys
+- **Pay-as-you-go** - No subscriptions, pay only for what you use (starting at $0.0001/request)
+- **Transparent pricing** - See costs per model upfront
+- **Works with this simple plugin** - No complex setup needed
 
 ## Privacy
 
-- API key stored locally in Obsidian
-- Content only sent when you trigger commands
-- No automatic data collection (by the plugin)
-- Only selected text/note content sent to OpenRouter
-
-## Building from Source
-
-```bash
-npm install
-npm run build
-```
+Content sent to OpenRouter only when you trigger commands. API key stored locally. No telemetry.
 
 ## License
 
-MIT License
-
-## Links
-
-- [OpenRouter](https://openrouter.ai/)
-- [Issues](https://github.com/cloonix/obsidian-openrouter-integration/issues)
-- [Obsidian](https://obsidian.md/)
+MIT - [Report issues](https://github.com/cloonix/obsidian-openrouter-integration/issues)
