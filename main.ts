@@ -45,10 +45,10 @@ export default class OpenRouterPlugin extends Plugin {
 					return;
 				}
 
-				new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
+				new PromptModal(this.app, async (prompt, modelId) => {
 					await this.processText(selection, prompt, (result) => {
 						editor.replaceSelection(result);
-					}, performanceMode, modelId);
+					}, modelId);
 				}, this.settings.models, this.settings.defaultModelId, 'Process Selected Text').open();
 			}
 		});
@@ -69,7 +69,7 @@ export default class OpenRouterPlugin extends Plugin {
 							return;
 						}
 
-						new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
+						new PromptModal(this.app, async (prompt, modelId) => {
 							await this.processText(content, prompt, async (result) => {
 								// Ask user how to handle the result
 								const choice = await this.showResultActionModal(result);
@@ -82,7 +82,7 @@ export default class OpenRouterPlugin extends Plugin {
 								} else if (choice === 'new-note') {
 									await this.createNewNote(result, prompt, this.lastUsedModel);
 								}
-							}, performanceMode, modelId);
+							}, modelId);
 						}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
 					}
 					return true;
@@ -96,11 +96,11 @@ export default class OpenRouterPlugin extends Plugin {
 			id: 'insert-at-cursor',
 			name: 'AI: Insert at cursor',
 			editorCallback: (editor: Editor, _view: MarkdownView) => {
-				new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
+				new PromptModal(this.app, async (prompt, modelId) => {
 					await this.processText('', prompt, (result) => {
 						const cursor = editor.getCursor();
 						editor.replaceRange(result, cursor);
-					}, performanceMode, modelId);
+					}, modelId);
 				}, this.settings.models, this.settings.defaultModelId, 'Generate AI Content').open();
 			}
 		});
@@ -110,10 +110,10 @@ export default class OpenRouterPlugin extends Plugin {
 			id: 'create-new-note',
 			name: 'AI: Create new note',
 			callback: () => {
-				new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
+				new PromptModal(this.app, async (prompt, modelId) => {
 					await this.processText('', prompt, async (result) => {
 						await this.createNewNote(result, prompt, this.lastUsedModel);
-					}, performanceMode, modelId);
+					}, modelId);
 				}, this.settings.models, this.settings.defaultModelId, 'Generate New Note').open();
 			}
 		});
@@ -132,10 +132,10 @@ export default class OpenRouterPlugin extends Plugin {
 							.setTitle('AI: Process selected text')
 							.setIcon('sparkles')
 							.onClick(async () => {
-								new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
+								new PromptModal(this.app, async (prompt, modelId) => {
 									await this.processText(selection, prompt, (result) => {
 										editor.replaceSelection(result);
-									}, performanceMode, modelId);
+									}, modelId);
 								}, this.settings.models, this.settings.defaultModelId, 'Process Selected Text').open();
 							});
 					});
@@ -153,7 +153,7 @@ export default class OpenRouterPlugin extends Plugin {
 								return;
 							}
 
-							new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
+							new PromptModal(this.app, async (prompt, modelId) => {
 								await this.processText(content, prompt, async (result) => {
 									const choice = await this.showResultActionModal(result);
 									if (choice === 'replace') {
@@ -165,7 +165,7 @@ export default class OpenRouterPlugin extends Plugin {
 									} else if (choice === 'new-note') {
 										await this.createNewNote(result, prompt, this.lastUsedModel);
 									}
-								}, performanceMode, modelId);
+								}, modelId);
 							}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
 						});
 				});
@@ -245,7 +245,6 @@ export default class OpenRouterPlugin extends Plugin {
 		text: string,
 		prompt: string,
 		onSuccess: (result: string) => void | Promise<void>,
-		performanceMode: boolean = false,
 		modelId?: string
 	): Promise<void> {
 		// Guard against concurrent requests
@@ -334,12 +333,12 @@ export default class OpenRouterPlugin extends Plugin {
 			// Store for use in createNewNote
 			this.lastUsedModel = selectedModel;
 
-			// Build request with performance optimizations if enabled
+			// Build request
 			const request: OpenRouterRequest = {
 				model: selectedModel,
 				messages: messages,
-				temperature: performanceMode ? 0.3 : this.settings.temperature,
-				max_tokens: performanceMode ? 300 : this.settings.maxTokens
+				temperature: this.settings.temperature,
+				max_tokens: this.settings.maxTokens
 			};
 
 			// Send request
