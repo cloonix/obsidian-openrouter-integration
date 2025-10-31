@@ -1,5 +1,5 @@
 import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
-import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest } from './types';
+import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest, DEFAULT_CONCISE_PROMPT } from './types';
 import { OpenRouterService } from './openrouter-service';
 import { PromptModal } from './prompt-modal';
 import { ContentScanner } from './content-scanner';
@@ -257,16 +257,21 @@ export default class OpenRouterPlugin extends Plugin {
 
 			notice = new Notice('Processing with AI...', 0);
 
+			// Track start time for elapsed time display
+			const startTime = Date.now();
+
 			// Build messages array
 			const messages = [];
 
-			// Add system prompt if configured
-			if (this.settings.systemPrompt && this.settings.systemPrompt.trim() !== '') {
-				messages.push({
-					role: 'system' as const,
-					content: this.settings.systemPrompt
-				});
-			}
+			// Add system prompt: use custom if set, otherwise use default concise prompt
+			const systemPrompt = this.settings.systemPrompt && this.settings.systemPrompt.trim() !== ''
+				? this.settings.systemPrompt
+				: DEFAULT_CONCISE_PROMPT;
+
+			messages.push({
+				role: 'system' as const,
+				content: systemPrompt
+			});
 
 			// Add user message
 			if (text && text.trim() !== '') {
@@ -294,7 +299,10 @@ export default class OpenRouterPlugin extends Plugin {
 
 			// Hide loading notice
 			notice.hide();
-			new Notice('AI response received!');
+
+			// Calculate and display elapsed time
+			const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+			new Notice(`AI response received! (${elapsedSeconds}s)`);
 
 			// Update status bar to reflect used request
 			this.updateStatusBar();
@@ -516,9 +524,9 @@ class OpenRouterSettingTab extends PluginSettingTab {
 		// System Prompt
 		new Setting(containerEl)
 			.setName('System Prompt')
-			.setDesc('Optional: Default instructions for the AI (applied to all requests)')
+			.setDesc('Custom instructions for the AI. Leave empty for concise responses (recommended). Add custom instructions to override default behavior.')
 			.addTextArea(text => text
-				.setPlaceholder('You are a helpful assistant...')
+				.setPlaceholder('Leave empty for concise responses...')
 				.setValue(this.plugin.settings.systemPrompt)
 				.onChange(async (value) => {
 					this.plugin.settings.systemPrompt = value;
