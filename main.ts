@@ -11,6 +11,7 @@ export default class OpenRouterPlugin extends Plugin {
 	contentScanner: ContentScanner;
 	private isProcessing: boolean = false;
 	private statusBarItem: HTMLElement;
+	private lastUsedModel: string = '';
 
 	async onload() {
 		await this.loadSettings();
@@ -44,11 +45,11 @@ export default class OpenRouterPlugin extends Plugin {
 					return;
 				}
 
-				new PromptModal(this.app, async (prompt, performanceMode) => {
+				new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
 					await this.processText(selection, prompt, (result) => {
 						editor.replaceSelection(result);
-					}, performanceMode);
-				}, 'Process Selected Text').open();
+					}, performanceMode, modelId);
+				}, this.settings.models, this.settings.defaultModelId, 'Process Selected Text').open();
 			}
 		});
 
@@ -68,7 +69,7 @@ export default class OpenRouterPlugin extends Plugin {
 							return;
 						}
 
-						new PromptModal(this.app, async (prompt, performanceMode) => {
+						new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
 							await this.processText(content, prompt, async (result) => {
 								// Ask user how to handle the result
 								const choice = await this.showResultActionModal(result);
@@ -79,10 +80,10 @@ export default class OpenRouterPlugin extends Plugin {
 									const cursor = editor.getCursor();
 									editor.replaceRange('\n\n' + result, cursor);
 								} else if (choice === 'new-note') {
-									await this.createNewNote(result, prompt);
+									await this.createNewNote(result, prompt, this.lastUsedModel);
 								}
-							}, performanceMode);
-						}, 'Process Active Note').open();
+							}, performanceMode, modelId);
+						}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
 					}
 					return true;
 				}
@@ -95,12 +96,12 @@ export default class OpenRouterPlugin extends Plugin {
 			id: 'insert-at-cursor',
 			name: 'AI: Insert at cursor',
 			editorCallback: (editor: Editor, _view: MarkdownView) => {
-				new PromptModal(this.app, async (prompt, performanceMode) => {
+				new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
 					await this.processText('', prompt, (result) => {
 						const cursor = editor.getCursor();
 						editor.replaceRange(result, cursor);
-					}, performanceMode);
-				}, 'Generate AI Content').open();
+					}, performanceMode, modelId);
+				}, this.settings.models, this.settings.defaultModelId, 'Generate AI Content').open();
 			}
 		});
 
@@ -109,11 +110,11 @@ export default class OpenRouterPlugin extends Plugin {
 			id: 'create-new-note',
 			name: 'AI: Create new note',
 			callback: () => {
-				new PromptModal(this.app, async (prompt, performanceMode) => {
+				new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
 					await this.processText('', prompt, async (result) => {
-						await this.createNewNote(result, prompt);
-					}, performanceMode);
-				}, 'Generate New Note').open();
+						await this.createNewNote(result, prompt, this.lastUsedModel);
+					}, performanceMode, modelId);
+				}, this.settings.models, this.settings.defaultModelId, 'Generate New Note').open();
 			}
 		});
 
@@ -131,11 +132,11 @@ export default class OpenRouterPlugin extends Plugin {
 							.setTitle('AI: Process selected text')
 							.setIcon('sparkles')
 							.onClick(async () => {
-								new PromptModal(this.app, async (prompt, performanceMode) => {
+								new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
 									await this.processText(selection, prompt, (result) => {
 										editor.replaceSelection(result);
-									}, performanceMode);
-								}, 'Process Selected Text').open();
+									}, performanceMode, modelId);
+								}, this.settings.models, this.settings.defaultModelId, 'Process Selected Text').open();
 							});
 					});
 				}
@@ -152,7 +153,7 @@ export default class OpenRouterPlugin extends Plugin {
 								return;
 							}
 
-							new PromptModal(this.app, async (prompt, performanceMode) => {
+							new PromptModal(this.app, async (prompt, performanceMode, modelId) => {
 								await this.processText(content, prompt, async (result) => {
 									const choice = await this.showResultActionModal(result);
 									if (choice === 'replace') {
@@ -162,10 +163,10 @@ export default class OpenRouterPlugin extends Plugin {
 										const cursor = editor.getCursor();
 										editor.replaceRange('\n\n' + result, cursor);
 									} else if (choice === 'new-note') {
-										await this.createNewNote(result, prompt);
+										await this.createNewNote(result, prompt, this.lastUsedModel);
 									}
-								}, performanceMode);
-							}, 'Process Active Note').open();
+								}, performanceMode, modelId);
+							}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
 						});
 				});
 			})
@@ -177,7 +178,29 @@ export default class OpenRouterPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loadedData = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+
+		// Migration: convert old single model setting to new models array
+		if (loadedData && 'model' in loadedData && typeof loadedData.model === 'string') {
+			// Old format detected, migrate to new format
+			const oldModel = loadedData.model;
+			// Check if this model already exists in the default models
+			const existingModel = this.settings.models.find(m => m.modelId === oldModel);
+			if (!existingModel) {
+				// Add the old model as a custom model
+				this.settings.models.push({
+					id: 'migrated-model',
+					name: 'Migrated Model',
+					modelId: oldModel
+				});
+				this.settings.defaultModelId = 'migrated-model';
+			} else {
+				this.settings.defaultModelId = existingModel.id;
+			}
+			// Save migrated settings
+			await this.saveSettings();
+		}
 	}
 
 	async saveSettings() {
@@ -220,7 +243,8 @@ export default class OpenRouterPlugin extends Plugin {
 		text: string,
 		prompt: string,
 		onSuccess: (result: string) => void | Promise<void>,
-		performanceMode: boolean = false
+		performanceMode: boolean = false,
+		modelId?: string
 	): Promise<void> {
 		// Guard against concurrent requests
 		if (this.isProcessing) {
@@ -293,9 +317,24 @@ export default class OpenRouterPlugin extends Plugin {
 				});
 			}
 
+			// Determine which model to use
+			let selectedModel: string;
+			if (performanceMode) {
+				selectedModel = 'google/gemini-flash-1.5-8b';
+			} else if (modelId) {
+				const model = this.settings.models.find(m => m.id === modelId);
+				selectedModel = model ? model.modelId : this.settings.models.find(m => m.id === this.settings.defaultModelId)?.modelId || 'google/gemini-flash-1.5';
+			} else {
+				const defaultModel = this.settings.models.find(m => m.id === this.settings.defaultModelId);
+				selectedModel = defaultModel ? defaultModel.modelId : 'google/gemini-flash-1.5';
+			}
+
+			// Store for use in createNewNote
+			this.lastUsedModel = selectedModel;
+
 			// Build request with performance optimizations if enabled
 			const request: OpenRouterRequest = {
-				model: performanceMode ? 'google/gemini-flash-1.5-8b' : this.settings.model,
+				model: selectedModel,
 				messages: messages,
 				temperature: performanceMode ? 0.3 : this.settings.temperature,
 				max_tokens: performanceMode ? 300 : this.settings.maxTokens
@@ -331,7 +370,7 @@ export default class OpenRouterPlugin extends Plugin {
 		}
 	}
 
-	private async createNewNote(content: string, promptContext: string): Promise<void> {
+	private async createNewNote(content: string, promptContext: string, modelUsed?: string): Promise<void> {
 		try {
 			// Generate filename with timestamp
 			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
@@ -341,11 +380,15 @@ export default class OpenRouterPlugin extends Plugin {
 			const folderPath = this.settings.outputFolder || '';
 			const fullPath = folderPath ? `${folderPath}/${filename}` : filename;
 
+			// Get model name for frontmatter
+			const defaultModel = this.settings.models.find(m => m.id === this.settings.defaultModelId);
+			const modelToDisplay = modelUsed || defaultModel?.modelId || 'unknown';
+
 			// Create frontmatter
 			const frontmatter = [
 				'---',
 				'ai: openrouter',
-				`model: ${this.settings.model}`,
+				`model: ${modelToDisplay}`,
 				`created: ${new Date().toISOString()}`,
 				`prompt: "${promptContext.replace(/"/g, '\\"')}"`,
 				'---',
@@ -498,16 +541,72 @@ class OpenRouterSettingTab extends PluginSettingTab {
 					button.setDisabled(false);
 				}));
 
-		// Model
+		// Models heading
+		containerEl.createEl('h3', { text: 'Models', attr: { style: 'margin-top: 2em;' } });
+
+		// Default model selector
 		new Setting(containerEl)
-			.setName('Model')
-			.setDesc('OpenRouter model ID (e.g., google/gemini-flash-1.5, anthropic/claude-3-5-sonnet)')
-			.addText(text => text
-				.setPlaceholder('google/gemini-flash-1.5')
-				.setValue(this.plugin.settings.model)
-				.onChange(async (value) => {
-					this.plugin.settings.model = value;
+			.setName('Default model')
+			.setDesc('Select which model to use by default')
+			.addDropdown(dropdown => {
+				this.plugin.settings.models.forEach(model => {
+					dropdown.addOption(model.id, model.name);
+				});
+				dropdown.setValue(this.plugin.settings.defaultModelId);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.defaultModelId = value;
 					await this.plugin.saveSettings();
+				});
+			});
+
+		// Display existing models
+		this.plugin.settings.models.forEach((model, index) => {
+			new Setting(containerEl)
+				.setName(model.name)
+				.setDesc(`ID: ${model.modelId}`)
+				.addButton(button => button
+					.setButtonText('Edit')
+					.onClick(() => {
+						// Simple prompt-based edit for now
+						const newName = prompt('Enter model name:', model.name);
+						const newModelId = prompt('Enter OpenRouter model ID:', model.modelId);
+						if (newName && newModelId) {
+							this.plugin.settings.models[index].name = newName;
+							this.plugin.settings.models[index].modelId = newModelId;
+							this.plugin.saveSettings();
+							this.display(); // Refresh settings UI
+						}
+					}))
+				.addButton(button => button
+					.setButtonText('Delete')
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.settings.models.splice(index, 1);
+						// If deleted model was default, set new default
+						if (this.plugin.settings.defaultModelId === model.id) {
+							this.plugin.settings.defaultModelId = this.plugin.settings.models[0]?.id || '';
+						}
+						await this.plugin.saveSettings();
+						this.display(); // Refresh settings UI
+					}));
+		});
+
+		// Add new model button
+		new Setting(containerEl)
+			.setName('Add new model')
+			.setDesc('Add a custom OpenRouter model')
+			.addButton(button => button
+				.setButtonText('Add Model')
+				.setCta()
+				.onClick(() => {
+					const name = prompt('Enter model name (e.g., "GPT-4"):');
+					const modelId = prompt('Enter OpenRouter model ID (e.g., "openai/gpt-4"):');
+					if (name && modelId) {
+						const id = name.toLowerCase().replace(/\s+/g, '-');
+						this.plugin.settings.models.push({ id, name, modelId });
+						this.plugin.saveSettings();
+						this.display(); // Refresh settings UI
+					}
 				}));
 
 		// Temperature

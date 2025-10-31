@@ -1,15 +1,26 @@
 import { App, Modal, Setting } from 'obsidian';
+import { ModelConfig } from './types';
 
 export class PromptModal extends Modal {
 	private prompt: string = '';
 	private performanceMode: boolean = false;
-	private onSubmit: (prompt: string, performanceMode: boolean) => void;
+	private selectedModelId: string;
+	private onSubmit: (prompt: string, performanceMode: boolean, modelId: string) => void;
 	private submitButton: HTMLButtonElement | null = null;
 	private textArea: HTMLTextAreaElement | null = null;
+	private models: ModelConfig[];
 
-	constructor(app: App, onSubmit: (prompt: string, performanceMode: boolean) => void, title?: string) {
+	constructor(
+		app: App,
+		onSubmit: (prompt: string, performanceMode: boolean, modelId: string) => void,
+		models: ModelConfig[],
+		defaultModelId: string,
+		title?: string
+	) {
 		super(app);
 		this.onSubmit = onSubmit;
+		this.models = models;
+		this.selectedModelId = defaultModelId;
 		if (title) {
 			this.titleEl.setText(title);
 		}
@@ -20,6 +31,35 @@ export class PromptModal extends Modal {
 		contentEl.empty();
 
 		contentEl.createEl('p', { text: 'Enter your prompt for the AI:' });
+
+		// Model selector
+		const modelContainer = contentEl.createDiv({
+			attr: { style: 'margin-bottom: 1em;' }
+		});
+
+		const modelLabel = modelContainer.createEl('label', {
+			text: 'Model: ',
+			attr: { style: 'font-weight: 500; margin-right: 0.5em;' }
+		});
+
+		const modelSelect = modelContainer.createEl('select', {
+			attr: { style: 'padding: 0.3em; font-size: 0.9em;' }
+		});
+
+		// Populate model options
+		this.models.forEach(model => {
+			const option = modelSelect.createEl('option', {
+				text: model.name,
+				value: model.id
+			});
+			if (model.id === this.selectedModelId) {
+				option.selected = true;
+			}
+		});
+
+		modelSelect.addEventListener('change', (e) => {
+			this.selectedModelId = (e.target as HTMLSelectElement).value;
+		});
 
 		// Create textarea
 		const textAreaContainer = contentEl.createDiv();
@@ -104,7 +144,7 @@ export class PromptModal extends Modal {
 	private handleSubmit() {
 		if (this.prompt.trim() !== '') {
 			this.close();
-			this.onSubmit(this.prompt, this.performanceMode);
+			this.onSubmit(this.prompt, this.performanceMode, this.selectedModelId);
 		}
 	}
 
