@@ -20,7 +20,7 @@ export interface OpenRouterSettings {
 
 export const DEFAULT_SETTINGS: OpenRouterSettings = {
 	apiKey: '',
-	model: 'openai/gpt-4o-mini',
+	model: 'google/gemini-flash-1.5',
 	temperature: 0.7,
 	maxTokens: 500,
 	systemPrompt: '',

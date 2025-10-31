@@ -44,10 +44,10 @@ export default class OpenRouterPlugin extends Plugin {
 					return;
 				}
 
-				new PromptModal(this.app, async (prompt) => {
+				new PromptModal(this.app, async (prompt, performanceMode) => {
 					await this.processText(selection, prompt, (result) => {
 						editor.replaceSelection(result);
-					});
+					}, performanceMode);
 				}, 'Process Selected Text').open();
 			}
 		});
@@ -68,7 +68,7 @@ export default class OpenRouterPlugin extends Plugin {
 							return;
 						}
 
-						new PromptModal(this.app, async (prompt) => {
+						new PromptModal(this.app, async (prompt, performanceMode) => {
 							await this.processText(content, prompt, async (result) => {
 								// Ask user how to handle the result
 								const choice = await this.showResultActionModal(result);
@@ -81,7 +81,7 @@ export default class OpenRouterPlugin extends Plugin {
 								} else if (choice === 'new-note') {
 									await this.createNewNote(result, prompt);
 								}
-							});
+							}, performanceMode);
 						}, 'Process Active Note').open();
 					}
 					return true;
@@ -95,11 +95,11 @@ export default class OpenRouterPlugin extends Plugin {
 			id: 'insert-at-cursor',
 			name: 'AI: Insert at cursor',
 			editorCallback: (editor: Editor, _view: MarkdownView) => {
-				new PromptModal(this.app, async (prompt) => {
+				new PromptModal(this.app, async (prompt, performanceMode) => {
 					await this.processText('', prompt, (result) => {
 						const cursor = editor.getCursor();
 						editor.replaceRange(result, cursor);
-					});
+					}, performanceMode);
 				}, 'Generate AI Content').open();
 			}
 		});
@@ -109,10 +109,10 @@ export default class OpenRouterPlugin extends Plugin {
 			id: 'create-new-note',
 			name: 'AI: Create new note',
 			callback: () => {
-				new PromptModal(this.app, async (prompt) => {
+				new PromptModal(this.app, async (prompt, performanceMode) => {
 					await this.processText('', prompt, async (result) => {
 						await this.createNewNote(result, prompt);
-					});
+					}, performanceMode);
 				}, 'Generate New Note').open();
 			}
 		});
@@ -131,10 +131,10 @@ export default class OpenRouterPlugin extends Plugin {
 							.setTitle('AI: Process selected text')
 							.setIcon('sparkles')
 							.onClick(async () => {
-								new PromptModal(this.app, async (prompt) => {
+								new PromptModal(this.app, async (prompt, performanceMode) => {
 									await this.processText(selection, prompt, (result) => {
 										editor.replaceSelection(result);
-									});
+									}, performanceMode);
 								}, 'Process Selected Text').open();
 							});
 					});
@@ -152,7 +152,7 @@ export default class OpenRouterPlugin extends Plugin {
 								return;
 							}
 
-							new PromptModal(this.app, async (prompt) => {
+							new PromptModal(this.app, async (prompt, performanceMode) => {
 								await this.processText(content, prompt, async (result) => {
 									const choice = await this.showResultActionModal(result);
 									if (choice === 'replace') {
@@ -164,7 +164,7 @@ export default class OpenRouterPlugin extends Plugin {
 									} else if (choice === 'new-note') {
 										await this.createNewNote(result, prompt);
 									}
-								});
+								}, performanceMode);
 							}, 'Process Active Note').open();
 						});
 				});
@@ -219,7 +219,8 @@ export default class OpenRouterPlugin extends Plugin {
 	private async processText(
 		text: string,
 		prompt: string,
-		onSuccess: (result: string) => void | Promise<void>
+		onSuccess: (result: string) => void | Promise<void>,
+		performanceMode: boolean = false
 	): Promise<void> {
 		// Guard against concurrent requests
 		if (this.isProcessing) {
@@ -292,12 +293,12 @@ export default class OpenRouterPlugin extends Plugin {
 				});
 			}
 
-			// Build request
+			// Build request with performance optimizations if enabled
 			const request: OpenRouterRequest = {
-				model: this.settings.model,
+				model: performanceMode ? 'google/gemini-flash-1.5-8b' : this.settings.model,
 				messages: messages,
-				temperature: this.settings.temperature,
-				max_tokens: this.settings.maxTokens
+				temperature: performanceMode ? 0.3 : this.settings.temperature,
+				max_tokens: performanceMode ? 300 : this.settings.maxTokens
 			};
 
 			// Send request
@@ -500,9 +501,9 @@ class OpenRouterSettingTab extends PluginSettingTab {
 		// Model
 		new Setting(containerEl)
 			.setName('Model')
-			.setDesc('OpenRouter model ID (e.g., openai/gpt-4o-mini, anthropic/claude-3-5-sonnet)')
+			.setDesc('OpenRouter model ID (e.g., google/gemini-flash-1.5, anthropic/claude-3-5-sonnet)')
 			.addText(text => text
-				.setPlaceholder('openai/gpt-4o-mini')
+				.setPlaceholder('google/gemini-flash-1.5')
 				.setValue(this.plugin.settings.model)
 				.onChange(async (value) => {
 					this.plugin.settings.model = value;

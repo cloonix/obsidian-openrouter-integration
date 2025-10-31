@@ -2,11 +2,12 @@ import { App, Modal, Setting } from 'obsidian';
 
 export class PromptModal extends Modal {
 	private prompt: string = '';
-	private onSubmit: (prompt: string) => void;
+	private performanceMode: boolean = false;
+	private onSubmit: (prompt: string, performanceMode: boolean) => void;
 	private submitButton: HTMLButtonElement | null = null;
 	private textArea: HTMLTextAreaElement | null = null;
 
-	constructor(app: App, onSubmit: (prompt: string) => void, title?: string) {
+	constructor(app: App, onSubmit: (prompt: string, performanceMode: boolean) => void, title?: string) {
 		super(app);
 		this.onSubmit = onSubmit;
 		if (title) {
@@ -50,6 +51,28 @@ export class PromptModal extends Modal {
 			}
 		});
 
+		// Performance mode checkbox
+		const checkboxContainer = contentEl.createDiv({
+			attr: { style: 'margin-bottom: 1em;' }
+		});
+
+		const checkboxLabel = checkboxContainer.createEl('label', {
+			attr: { style: 'display: flex; align-items: center; gap: 0.5em; cursor: pointer;' }
+		});
+
+		const checkbox = checkboxLabel.createEl('input', {
+			attr: { type: 'checkbox' }
+		});
+
+		checkbox.addEventListener('change', (e) => {
+			this.performanceMode = (e.target as HTMLInputElement).checked;
+		});
+
+		checkboxLabel.createEl('span', {
+			text: 'Performance mode (faster model, lower quality)',
+			attr: { style: 'font-size: 0.9em;' }
+		});
+
 		// Buttons container
 		const buttonContainer = contentEl.createDiv({
 			attr: { style: 'display: flex; gap: 0.5em; justify-content: flex-end;' }
@@ -81,7 +104,7 @@ export class PromptModal extends Modal {
 	private handleSubmit() {
 		if (this.prompt.trim() !== '') {
 			this.close();
-			this.onSubmit(this.prompt);
+			this.onSubmit(this.prompt, this.performanceMode);
 		}
 	}
 
