@@ -14,6 +14,13 @@ Simple, focused AI text processing using OpenRouter's API. Select text, describe
 
 ## Installation
 
+**Option 1: BRAT (easiest)**
+1. Install [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat)
+2. Open BRAT settings → Add Beta plugin
+3. Enter: `cloonix/obsidian-openrouter-integration`
+4. Enable "OpenRouter AI Assistant" in Community Plugins
+
+**Option 2: Manual**
 1. Download `main.js` and `manifest.json` from [latest release](https://github.com/cloonix/obsidian-openrouter-integration/releases)
 2. Create folder: `.obsidian/plugins/openrouter-ai-assistant/`
 3. Copy both files into this folder
