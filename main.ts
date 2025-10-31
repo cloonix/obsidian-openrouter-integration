@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
 import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest, DEFAULT_CONCISE_PROMPT } from './types';
 import { OpenRouterService } from './openrouter-service';
 import { PromptModal } from './prompt-modal';
@@ -428,14 +428,15 @@ export default class OpenRouterPlugin extends Plugin {
 }
 
 // Modal for choosing how to handle results from processing active note
-class ResultActionModal extends PromptModal {
+class ResultActionModal extends Modal {
 	private result: string;
 	private onChoose: (action: 'cursor' | 'new-note' | 'replace' | 'cancel') => void;
 
 	constructor(app: App, result: string, onChoose: (action: 'cursor' | 'new-note' | 'replace' | 'cancel') => void) {
-		super(app, () => { }, 'AI Response Ready');
+		super(app);
 		this.result = result;
 		this.onChoose = onChoose;
+		this.titleEl.setText('AI Response Ready');
 	}
 
 	onOpen() {
@@ -493,6 +494,11 @@ class ResultActionModal extends PromptModal {
 			this.close();
 			this.onChoose('cancel');
 		});
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
 	}
 }
 
