@@ -321,12 +321,12 @@ export default class OpenRouterPlugin extends Plugin {
 
 			// Determine which model to use
 			let selectedModel: string;
-			if (performanceMode) {
-				selectedModel = 'google/gemini-flash-1.5-8b';
-			} else if (modelId) {
+			if (modelId) {
+				// User explicitly selected a model
 				const model = this.settings.models.find(m => m.id === modelId);
 				selectedModel = model ? model.modelId : this.settings.models.find(m => m.id === this.settings.defaultModelId)?.modelId || 'google/gemini-flash-1.5';
 			} else {
+				// Use default model
 				const defaultModel = this.settings.models.find(m => m.id === this.settings.defaultModelId);
 				selectedModel = defaultModel ? defaultModel.modelId : 'google/gemini-flash-1.5';
 			}
