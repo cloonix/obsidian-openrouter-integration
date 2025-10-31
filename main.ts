@@ -504,6 +504,66 @@ class ResultActionModal extends Modal {
 	}
 }
 
+// Modal for adding/editing models
+class ModelEditModal extends Modal {
+	private modelName: string;
+	private modelId: string;
+	private onSubmit: (name: string, modelId: string) => void;
+
+	constructor(app: App, onSubmit: (name: string, modelId: string) => void, existingName?: string, existingModelId?: string) {
+		super(app);
+		this.modelName = existingName || '';
+		this.modelId = existingModelId || '';
+		this.onSubmit = onSubmit;
+		this.titleEl.setText(existingName ? 'Edit Model' : 'Add New Model');
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+
+		// Model name input
+		new Setting(contentEl)
+			.setName('Model name')
+			.setDesc('Display name for the model (e.g., "GPT-4")')
+			.addText(text => text
+				.setPlaceholder('GPT-4')
+				.setValue(this.modelName)
+				.onChange(value => this.modelName = value));
+
+		// Model ID input
+		new Setting(contentEl)
+			.setName('OpenRouter model ID')
+			.setDesc('Model identifier from OpenRouter (e.g., "openai/gpt-4")')
+			.addText(text => text
+				.setPlaceholder('openai/gpt-4')
+				.setValue(this.modelId)
+				.onChange(value => this.modelId = value));
+
+		// Buttons
+		new Setting(contentEl)
+			.addButton(button => button
+				.setButtonText('Cancel')
+				.onClick(() => this.close()))
+			.addButton(button => button
+				.setButtonText('Save')
+				.setCta()
+				.onClick(() => {
+					if (this.modelName.trim() && this.modelId.trim()) {
+						this.onSubmit(this.modelName.trim(), this.modelId.trim());
+						this.close();
+					} else {
+						new Notice('Please fill in both fields');
+					}
+				}));
+	}
+
+	onClose() {
+		const { contentEl } = this;
+		contentEl.empty();
+	}
+}
+
 // Settings Tab
 class OpenRouterSettingTab extends PluginSettingTab {
 	plugin: OpenRouterPlugin;
@@ -575,15 +635,17 @@ class OpenRouterSettingTab extends PluginSettingTab {
 				.addButton(button => button
 					.setButtonText('Edit')
 					.onClick(() => {
-						// Simple prompt-based edit for now
-						const newName = prompt('Enter model name:', model.name);
-						const newModelId = prompt('Enter OpenRouter model ID:', model.modelId);
-						if (newName && newModelId) {
-							this.plugin.settings.models[index].name = newName;
-							this.plugin.settings.models[index].modelId = newModelId;
-							this.plugin.saveSettings();
-							this.display(); // Refresh settings UI
-						}
+						new ModelEditModal(
+							this.app,
+							(newName, newModelId) => {
+								this.plugin.settings.models[index].name = newName;
+								this.plugin.settings.models[index].modelId = newModelId;
+								this.plugin.saveSettings();
+								this.display(); // Refresh settings UI
+							},
+							model.name,
+							model.modelId
+						).open();
 					}))
 				.addButton(button => button
 					.setButtonText('Delete')
@@ -607,14 +669,15 @@ class OpenRouterSettingTab extends PluginSettingTab {
 				.setButtonText('Add Model')
 				.setCta()
 				.onClick(() => {
-					const name = prompt('Enter model name (e.g., "GPT-4"):');
-					const modelId = prompt('Enter OpenRouter model ID (e.g., "openai/gpt-4"):');
-					if (name && modelId) {
-						const id = name.toLowerCase().replace(/\s+/g, '-');
-						this.plugin.settings.models.push({ id, name, modelId });
-						this.plugin.saveSettings();
-						this.display(); // Refresh settings UI
-					}
+					new ModelEditModal(
+						this.app,
+						(name, modelId) => {
+							const id = name.toLowerCase().replace(/\s+/g, '-');
+							this.plugin.settings.models.push({ id, name, modelId });
+							this.plugin.saveSettings();
+							this.display(); // Refresh settings UI
+						}
+					).open();
 				}));
 
 		// Temperature
