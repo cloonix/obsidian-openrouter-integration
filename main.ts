@@ -141,6 +141,21 @@ export default class OpenRouterPlugin extends Plugin {
 					});
 				}
 
+				// Always add "Insert at cursor"
+				menu.addItem((item) => {
+					item
+						.setTitle('AI: Insert at cursor')
+						.setIcon('plus-circle')
+						.onClick(async () => {
+							new PromptModal(this.app, async (prompt, modelId) => {
+								await this.processText('', prompt, (result) => {
+									const cursor = editor.getCursor();
+									editor.replaceRange(result, cursor);
+								}, modelId);
+							}, this.settings.models, this.settings.defaultModelId, 'Generate AI Content').open();
+						});
+				});
+
 				// Always add "Process active note"
 				menu.addItem((item) => {
 					item
