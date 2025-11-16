@@ -3,9 +3,16 @@
 // Default system prompt for concise responses
 export const DEFAULT_CONCISE_PROMPT = "Return only the requested output without explanations, commentary, or additional text. For translations, return only the translated text. For grammar corrections, return only the corrected text. Do not add markdown formatting unless specifically requested.";
 
+export interface ModelConfig {
+	id: string;
+	name: string;
+	modelId: string;
+}
+
 export interface OpenRouterSettings {
 	apiKey: string;
-	model: string;
+	models: ModelConfig[];
+	defaultModelId: string;
 	temperature: number;
 	maxTokens: number;
 	systemPrompt: string;
@@ -20,7 +27,13 @@ export interface OpenRouterSettings {
 
 export const DEFAULT_SETTINGS: OpenRouterSettings = {
 	apiKey: '',
-	model: 'openai/gpt-4o-mini',
+	models: [
+		{ id: 'gemini-flash', name: 'Gemini Flash (Fast & Cheap)', modelId: 'google/gemini-flash-1.5' },
+		{ id: 'gemini-flash-8b', name: 'Gemini Flash 8B (Fastest)', modelId: 'google/gemini-flash-1.5-8b' },
+		{ id: 'gpt-4o-mini', name: 'GPT-4o Mini', modelId: 'openai/gpt-4o-mini' },
+		{ id: 'claude-haiku', name: 'Claude 3 Haiku', modelId: 'anthropic/claude-3-haiku' }
+	],
+	defaultModelId: 'gemini-flash',
 	temperature: 0.7,
 	maxTokens: 500,
 	systemPrompt: '',
