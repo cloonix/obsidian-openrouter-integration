@@ -34,7 +34,8 @@ export default class OpenRouterPlugin extends Plugin {
 	contentScanner!: ContentScanner;
 	private isProcessing: boolean = false;
 	private statusBarItem!: HTMLElement;
-	private lastUsedModel: string = '';
+	private lastUsedModel: string = ''; // Stores resolved model ID for createNewNote
+	private lastSelectedModelId: string = ''; // Stores settings model ID for modal persistence
 
 	async onload() {
 		await this.loadSettings();
@@ -69,10 +70,11 @@ export default class OpenRouterPlugin extends Plugin {
 				}
 
 				new PromptModal(this.app, async (prompt, modelId) => {
+					this.lastSelectedModelId = modelId; // Remember selection
 					await this.processText(selection, prompt, (result) => {
 						editor.replaceSelection(result);
 					}, modelId);
-				}, this.settings.models, this.settings.defaultModelId, 'Process Selected Text').open();
+				}, this.settings.models, this.getModalModelId(), 'Process Selected Text').open();
 			}
 		});
 
@@ -106,11 +108,12 @@ export default class OpenRouterPlugin extends Plugin {
 			name: 'AI: Insert at cursor',
 			editorCallback: (editor: Editor, _view: MarkdownView | MarkdownFileInfo) => {
 				new PromptModal(this.app, async (prompt, modelId) => {
+					this.lastSelectedModelId = modelId; // Remember selection
 					await this.processText('', prompt, (result) => {
 						const cursor = editor.getCursor();
 						editor.replaceRange(result, cursor);
 					}, modelId);
-				}, this.settings.models, this.settings.defaultModelId, 'Generate AI Content').open();
+				}, this.settings.models, this.getModalModelId(), 'Generate AI Content').open();
 			}
 		});
 
@@ -120,10 +123,11 @@ export default class OpenRouterPlugin extends Plugin {
 			name: 'AI: Create new note',
 			callback: () => {
 				new PromptModal(this.app, async (prompt, modelId) => {
+					this.lastSelectedModelId = modelId; // Remember selection
 					await this.processText('', prompt, async (result) => {
 						await this.createNewNote(result, prompt, this.lastUsedModel);
 					}, modelId);
-				}, this.settings.models, this.settings.defaultModelId, 'Generate New Note').open();
+				}, this.settings.models, this.getModalModelId(), 'Generate New Note').open();
 			}
 		});
 
@@ -142,10 +146,11 @@ export default class OpenRouterPlugin extends Plugin {
 							.setIcon('sparkles')
 							.onClick(async () => {
 								new PromptModal(this.app, async (prompt, modelId) => {
+									this.lastSelectedModelId = modelId; // Remember selection
 									await this.processText(selection, prompt, (result) => {
 										editor.replaceSelection(result);
 									}, modelId);
-								}, this.settings.models, this.settings.defaultModelId, 'Process Selected Text').open();
+								}, this.settings.models, this.getModalModelId(), 'Process Selected Text').open();
 							});
 					});
 				}
@@ -157,11 +162,12 @@ export default class OpenRouterPlugin extends Plugin {
 						.setIcon('plus-circle')
 						.onClick(async () => {
 							new PromptModal(this.app, async (prompt, modelId) => {
+								this.lastSelectedModelId = modelId; // Remember selection
 								await this.processText('', prompt, (result) => {
 									const cursor = editor.getCursor();
 									editor.replaceRange(result, cursor);
 								}, modelId);
-							}, this.settings.models, this.settings.defaultModelId, 'Generate AI Content').open();
+							}, this.settings.models, this.getModalModelId(), 'Generate AI Content').open();
 						});
 				});
 
@@ -267,10 +273,18 @@ export default class OpenRouterPlugin extends Plugin {
 	}
 
 	/**
+	 * Gets the model ID to show in modal (last selected or default)
+	 */
+	private getModalModelId(): string {
+		return this.lastSelectedModelId || this.settings.defaultModelId;
+	}
+
+	/**
 	 * Shows prompt modal and handles processing active note with result action modal
 	 */
 	private handleProcessActiveNote(editor: Editor, content: string): void {
 		new PromptModal(this.app, async (prompt, modelId) => {
+			this.lastSelectedModelId = modelId; // Remember selection
 			await this.processText(content, prompt, async (result) => {
 				const choice = await this.showResultActionModal(result);
 				if (choice === 'replace') {
@@ -283,7 +297,7 @@ export default class OpenRouterPlugin extends Plugin {
 					await this.createNewNote(result, prompt, this.lastUsedModel);
 				}
 			}, modelId);
-		}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
+		}, this.settings.models, this.getModalModelId(), 'Process Active Note').open();
 	}
 
 	private updateStatusBar(): void {
