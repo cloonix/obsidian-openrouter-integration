@@ -1,5 +1,10 @@
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { ModelConfig } from './types';
+
+// Import shared styles
+const STYLES = {
+	BUTTON_CONTAINER: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1em;'
+} as const;
 
 export class PromptModal extends Modal {
 	private prompt: string = '';
@@ -36,13 +41,20 @@ export class PromptModal extends Modal {
 			attr: { style: 'margin-bottom: 1em;' }
 		});
 
-		const modelLabel = modelContainer.createEl('label', {
+		modelContainer.createEl('label', {
 			text: 'Model: ',
-			attr: { style: 'font-weight: 500; margin-right: 0.5em;' }
+			attr: {
+				style: 'font-weight: 500; margin-right: 0.5em;',
+				for: 'ai-model-select'
+			}
 		});
 
 		const modelSelect = modelContainer.createEl('select', {
-			attr: { style: 'padding: 0.3em; font-size: 0.9em;' }
+			attr: {
+				style: 'padding: 0.3em; font-size: 0.9em;',
+				id: 'ai-model-select',
+				'aria-label': 'Select AI model'
+			}
 		});
 
 		// Populate model options
@@ -66,7 +78,9 @@ export class PromptModal extends Modal {
 			attr: {
 				rows: '6',
 				placeholder: 'Example: Summarize this text...',
-				style: 'width: 100%; margin-bottom: 1em; padding: 0.5em; font-family: inherit; resize: vertical;'
+				style: 'width: 100%; margin-bottom: 1em; padding: 0.5em; font-family: inherit; resize: vertical;',
+				'aria-label': 'AI prompt input',
+				'aria-required': 'true'
 			}
 		});
 
@@ -92,11 +106,14 @@ export class PromptModal extends Modal {
 
 		// Buttons container
 		const buttonContainer = contentEl.createDiv({
-			attr: { style: 'display: flex; gap: 0.5em; justify-content: flex-end;' }
+			attr: { style: STYLES.BUTTON_CONTAINER }
 		});
 
 		// Cancel button
-		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		const cancelButton = buttonContainer.createEl('button', {
+			text: 'Cancel',
+			attr: { 'aria-label': 'Cancel and close prompt' }
+		});
 		cancelButton.addEventListener('click', () => {
 			this.close();
 		});
@@ -104,7 +121,8 @@ export class PromptModal extends Modal {
 		// Submit button
 		this.submitButton = buttonContainer.createEl('button', {
 			text: 'Submit',
-			cls: 'mod-cta'
+			cls: 'mod-cta',
+			attr: { 'aria-label': 'Submit prompt to AI' }
 		});
 		this.submitButton.disabled = true; // Initially disabled
 		this.submitButton.addEventListener('click', () => {

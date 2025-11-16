@@ -1,5 +1,7 @@
 // Rate limiter using sliding window algorithm
 
+const WINDOW_MS = 60 * 1000; // 1 minute window
+
 export interface RateLimitConfig {
 	maxRequestsPerMinute: number;
 	enabled: boolean;
@@ -18,7 +20,9 @@ export class RateLimiter {
 	}
 
 	/**
-	 * Check if a new request can be made without exceeding rate limit
+	 * Checks if a new request can be made without exceeding rate limit
+	 * Uses sliding window algorithm to track requests over the last 60 seconds
+	 * @returns true if request is allowed, false if rate limit would be exceeded
 	 */
 	canMakeRequest(): boolean {
 		if (!this.config.enabled) {
@@ -68,8 +72,7 @@ export class RateLimiter {
 
 		// Find the oldest timestamp that's still in the window
 		const oldestTimestamp = this.requestTimestamps[0];
-		const windowMs = 60 * 1000; // 1 minute
-		const resetTime = oldestTimestamp + windowMs;
+		const resetTime = oldestTimestamp + WINDOW_MS;
 
 		return Math.max(0, resetTime - Date.now());
 	}
@@ -95,14 +98,12 @@ export class RateLimiter {
 	}
 
 	/**
-	 * Remove timestamps older than 1 minute
+	 * Remove timestamps older than the sliding window
 	 */
 	private cleanOldTimestamps(): void {
 		const now = Date.now();
-		const windowMs = 60 * 1000; // 1 minute
-
 		this.requestTimestamps = this.requestTimestamps.filter(
-			timestamp => now - timestamp < windowMs
+			timestamp => now - timestamp < WINDOW_MS
 		);
 	}
 

@@ -10,6 +10,7 @@ export interface ModelConfig {
 }
 
 export interface OpenRouterSettings {
+	settingsVersion?: number;
 	apiKey: string;
 	models: ModelConfig[];
 	defaultModelId: string;
@@ -26,6 +27,7 @@ export interface OpenRouterSettings {
 }
 
 export const DEFAULT_SETTINGS: OpenRouterSettings = {
+	settingsVersion: 2,
 	apiKey: '',
 	models: [
 		{ id: 'gemini-flash', name: 'Gemini Flash (Fast & Cheap)', modelId: 'google/gemini-flash-1.5' },

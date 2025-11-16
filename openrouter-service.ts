@@ -24,6 +24,13 @@ export class OpenRouterService {
 		return this.rateLimiter;
 	}
 
+	/**
+	 * Sends a request to the OpenRouter API
+	 * Validates API key, checks rate limits, and handles errors
+	 * @param request - OpenRouter API request with model, messages, and optional parameters
+	 * @returns Promise resolving to the AI's text response
+	 * @throws Error if API key missing, rate limit exceeded, or API request fails
+	 */
 	async sendRequest(request: OpenRouterRequest): Promise<string> {
 		if (!this.apiKey || this.apiKey.trim() === '') {
 			throw new Error('API key is not configured. Please set your OpenRouter API key in plugin settings.');

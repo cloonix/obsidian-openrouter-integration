@@ -1,6 +1,11 @@
 import { App, Modal } from 'obsidian';
 import { ScanResult } from './content-scanner';
 
+// Import shared styles
+const STYLES = {
+	BUTTON_CONTAINER: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1.5em;'
+} as const;
+
 export class SecurityWarningModal extends Modal {
 	private scanResult: ScanResult;
 	private onConfirm: () => void;
@@ -45,11 +50,17 @@ export class SecurityWarningModal extends Modal {
 		// Matches list
 		if (this.scanResult.matches.length > 0) {
 			const matchesEl = contentEl.createEl('details', {
-				attr: { style: 'margin: 1em 0;' }
+				attr: {
+					style: 'margin: 1em 0;',
+					'aria-label': 'Detected security patterns details'
+				}
 			});
 			matchesEl.createEl('summary', {
 				text: `View ${this.scanResult.matches.length} detected pattern${this.scanResult.matches.length > 1 ? 's' : ''}`,
-				attr: { style: 'cursor: pointer; color: var(--text-muted);' }
+				attr: {
+					style: 'cursor: pointer; color: var(--text-muted);',
+					'aria-label': 'Toggle pattern details'
+				}
 			});
 
 			const matchesList = matchesEl.createEl('div', {
@@ -88,11 +99,14 @@ export class SecurityWarningModal extends Modal {
 
 		// Buttons
 		const buttonContainer = contentEl.createEl('div', {
-			attr: { style: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1.5em;' }
+			attr: { style: STYLES.BUTTON_CONTAINER }
 		});
 
 		// Cancel button
-		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		const cancelButton = buttonContainer.createEl('button', {
+			text: 'Cancel',
+			attr: { 'aria-label': 'Cancel request and return to editing' }
+		});
 		cancelButton.addEventListener('click', () => {
 			this.close();
 			this.onCancel();
@@ -101,7 +115,8 @@ export class SecurityWarningModal extends Modal {
 		// Continue anyway button
 		const continueButton = buttonContainer.createEl('button', {
 			text: 'Continue Anyway',
-			cls: 'mod-warning'
+			cls: 'mod-warning',
+			attr: { 'aria-label': 'Proceed with request despite security warning' }
 		});
 		continueButton.addEventListener('click', () => {
 			this.close();

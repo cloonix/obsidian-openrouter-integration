@@ -1,7 +1,7 @@
 {
 	"id": "openrouter-ai-assistant",
 	"name": "OpenRouter AI Assistant",
-	"version": "1.3.2",
+	"version": "1.4.0",
 	"minAppVersion": "0.15.0",
 	"description": "AI-powered text processing using OpenRouter API. Process selections, notes, and generate content with various AI models.",
 	"author": "Claus",

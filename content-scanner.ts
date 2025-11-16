@@ -1,5 +1,8 @@
 // Content scanner for detecting potentially sensitive information
 
+const CONTEXT_WINDOW_CHARS = 20; // Characters to check before/after match for context
+const MIN_CONTENT_LENGTH = 10; // Minimum content length to scan
+
 export interface ScanMatch {
 	type: string;
 	pattern: string;
@@ -42,15 +45,51 @@ export class ContentScanner {
 	];
 
 	/**
-	 * Scan content for sensitive patterns
+	 * Parse code block boundaries in the content
+	 * Returns array of [start, end] index ranges for code blocks
+	 */
+	private parseCodeBlocks(content: string): Array<[number, number]> {
+		const codeBlocks: Array<[number, number]> = [];
+		const codeBlockRegex = /```/g;
+		const matches: number[] = [];
+		let match;
+
+		// Find all ``` markers
+		while ((match = codeBlockRegex.exec(content)) !== null) {
+			matches.push(match.index);
+		}
+
+		// Pair them up (opening and closing)
+		for (let i = 0; i < matches.length - 1; i += 2) {
+			codeBlocks.push([matches[i], matches[i + 1]]);
+		}
+
+		return codeBlocks;
+	}
+
+	/**
+	 * Check if an index falls within any code block range
+	 */
+	private isInCodeBlock(index: number, codeBlocks: Array<[number, number]>): boolean {
+		return codeBlocks.some(([start, end]) => index >= start && index <= end);
+	}
+
+	/**
+	 * Scans content for sensitive patterns like API keys, tokens, and credentials
+	 * Automatically filters out matches in code blocks and example text
+	 * @param content - Text content to scan for sensitive information
+	 * @returns ScanResult containing detected matches and whether sensitive content was found
 	 */
 	scan(content: string): ScanResult {
 		const matches: ScanMatch[] = [];
 
 		// Skip scanning if content is very short
-		if (content.length < 10) {
+		if (content.length < MIN_CONTENT_LENGTH) {
 			return { hasSensitiveContent: false, matches: [] };
 		}
+
+		// Parse all code block boundaries
+		const codeBlocks = this.parseCodeBlocks(content);
 
 		// Check each pattern
 		for (const pattern of this.patterns) {
@@ -58,17 +97,19 @@ export class ContentScanner {
 			let match;
 
 			while ((match = regex.exec(content)) !== null) {
-				// Avoid false positives in code blocks (basic check)
-				const before = content.substring(Math.max(0, match.index - 10), match.index);
-				const after = content.substring(match.index, Math.min(content.length, match.index + match[0].length + 10));
+				// Skip if in a code block
+				if (this.isInCodeBlock(match.index, codeBlocks)) {
+					continue;
+				}
 
-				// Skip if it looks like it's in a code block or example
-				const isInCodeBlock = before.includes('```') || after.includes('```');
+				// Skip if it looks like an example
+				const before = content.substring(Math.max(0, match.index - CONTEXT_WINDOW_CHARS), match.index);
+				const after = content.substring(match.index, Math.min(content.length, match.index + match[0].length + CONTEXT_WINDOW_CHARS));
 				const isExample = before.toLowerCase().includes('example') ||
 				                 after.toLowerCase().includes('example') ||
 				                 before.includes('XXXX') || after.includes('XXXX');
 
-				if (!isInCodeBlock && !isExample) {
+				if (!isExample) {
 					matches.push({
 						type: pattern.type,
 						pattern: pattern.description,

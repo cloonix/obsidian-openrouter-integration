@@ -1,16 +1,39 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from 'obsidian';
+import { App, Editor, MarkdownView, MarkdownFileInfo, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { OpenRouterSettings, DEFAULT_SETTINGS, OpenRouterRequest, DEFAULT_CONCISE_PROMPT } from './types';
 import { OpenRouterService } from './openrouter-service';
 import { PromptModal } from './prompt-modal';
 import { ContentScanner } from './content-scanner';
 import { SecurityWarningModal } from './security-warning-modal';
 
+// Constants
+const MESSAGES = {
+	NO_SELECTION: 'Please select some text first.',
+	EMPTY_NOTE: 'The active note is empty.',
+	REQUEST_CANCELLED: 'Request cancelled by user.',
+	PROCESSING_IN_PROGRESS: 'Another AI request is already in progress. Please wait...',
+	RESPONSE_RECEIVED: 'AI response received!',
+	NOTE_CREATED: 'Created new note:',
+	CREATE_NOTE_FAILED: 'Failed to create note.',
+	CREATE_NOTE_ERROR: 'Failed to create note:'
+} as const;
+
+const STYLES = {
+	BUTTON_CONTAINER: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1em;',
+	PREVIEW_CONTAINER: 'background: var(--background-secondary); padding: 1em; margin: 1em 0; border-radius: 4px; max-height: 150px; overflow-y: auto; font-family: var(--font-monospace); font-size: 0.9em; white-space: pre-wrap;'
+} as const;
+
+const CONFIG = {
+	PREVIEW_MAX_LENGTH: 200,
+	FALLBACK_MODEL: 'google/gemini-flash-1.5',
+	STATUS_UPDATE_INTERVAL: 10000
+} as const;
+
 export default class OpenRouterPlugin extends Plugin {
-	settings: OpenRouterSettings;
-	openRouterService: OpenRouterService;
-	contentScanner: ContentScanner;
+	settings!: OpenRouterSettings;
+	openRouterService!: OpenRouterService;
+	contentScanner!: ContentScanner;
 	private isProcessing: boolean = false;
-	private statusBarItem: HTMLElement;
+	private statusBarItem!: HTMLElement;
 	private lastUsedModel: string = '';
 
 	async onload() {
@@ -29,19 +52,19 @@ export default class OpenRouterPlugin extends Plugin {
 		this.statusBarItem = this.addStatusBarItem();
 		this.updateStatusBar();
 
-		// Update status bar every 10 seconds
+		// Update status bar periodically
 		this.registerInterval(
-			window.setInterval(() => this.updateStatusBar(), 10000)
+			window.setInterval(() => this.updateStatusBar(), CONFIG.STATUS_UPDATE_INTERVAL)
 		);
 
 		// Command: Process Selected Text
 		this.addCommand({
 			id: 'process-selected-text',
 			name: 'AI: Process selected text',
-			editorCallback: (editor: Editor, _view: MarkdownView) => {
+			editorCallback: (editor: Editor, _view: MarkdownView | MarkdownFileInfo) => {
 				const selection = editor.getSelection();
-				if (!selection || selection.trim() === '') {
-					new Notice('Please select some text first.');
+				if (!this.isNotEmpty(selection)) {
+					new Notice(MESSAGES.NO_SELECTION);
 					return;
 				}
 
@@ -64,26 +87,12 @@ export default class OpenRouterPlugin extends Plugin {
 						const editor = markdownView.editor;
 						const content = editor.getValue();
 
-						if (!content || content.trim() === '') {
-							new Notice('The active note is empty.');
+						if (!this.isNotEmpty(content)) {
+							new Notice(MESSAGES.EMPTY_NOTE);
 							return;
 						}
 
-						new PromptModal(this.app, async (prompt, modelId) => {
-							await this.processText(content, prompt, async (result) => {
-								// Ask user how to handle the result
-								const choice = await this.showResultActionModal(result);
-								if (choice === 'replace') {
-									editor.setValue(result);
-									new Notice('Note replaced with AI response');
-								} else if (choice === 'cursor') {
-									const cursor = editor.getCursor();
-									editor.replaceRange('\n\n' + result, cursor);
-								} else if (choice === 'new-note') {
-									await this.createNewNote(result, prompt, this.lastUsedModel);
-								}
-							}, modelId);
-						}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
+						this.handleProcessActiveNote(editor, content);
 					}
 					return true;
 				}
@@ -95,7 +104,7 @@ export default class OpenRouterPlugin extends Plugin {
 		this.addCommand({
 			id: 'insert-at-cursor',
 			name: 'AI: Insert at cursor',
-			editorCallback: (editor: Editor, _view: MarkdownView) => {
+			editorCallback: (editor: Editor, _view: MarkdownView | MarkdownFileInfo) => {
 				new PromptModal(this.app, async (prompt, modelId) => {
 					await this.processText('', prompt, (result) => {
 						const cursor = editor.getCursor();
@@ -123,7 +132,7 @@ export default class OpenRouterPlugin extends Plugin {
 
 		// Register context menu for editor
 		this.registerEvent(
-			this.app.workspace.on('editor-menu', (menu, editor, view) => {
+			this.app.workspace.on('editor-menu', (menu, editor, _view) => {
 				// Add "Process selected text" if text is selected
 				const selection = editor.getSelection();
 				if (selection && selection.trim() !== '') {
@@ -163,25 +172,12 @@ export default class OpenRouterPlugin extends Plugin {
 						.setIcon('file-text')
 						.onClick(async () => {
 							const content = editor.getValue();
-							if (!content || content.trim() === '') {
-								new Notice('The active note is empty.');
+							if (!this.isNotEmpty(content)) {
+								new Notice(MESSAGES.EMPTY_NOTE);
 								return;
 							}
 
-							new PromptModal(this.app, async (prompt, modelId) => {
-								await this.processText(content, prompt, async (result) => {
-									const choice = await this.showResultActionModal(result);
-									if (choice === 'replace') {
-										editor.setValue(result);
-										new Notice('Note replaced with AI response');
-									} else if (choice === 'cursor') {
-										const cursor = editor.getCursor();
-										editor.replaceRange('\n\n' + result, cursor);
-									} else if (choice === 'new-note') {
-										await this.createNewNote(result, prompt, this.lastUsedModel);
-									}
-								}, modelId);
-							}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
+							this.handleProcessActiveNote(editor, content);
 						});
 				});
 			})
@@ -197,22 +193,27 @@ export default class OpenRouterPlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
 
 		// Migration: convert old single model setting to new models array
-		if (loadedData && 'model' in loadedData && typeof loadedData.model === 'string') {
-			// Old format detected, migrate to new format
-			const oldModel = loadedData.model;
-			// Check if this model already exists in the default models
-			const existingModel = this.settings.models.find(m => m.modelId === oldModel);
-			if (!existingModel) {
-				// Add the old model as a custom model
-				this.settings.models.push({
-					id: 'migrated-model',
-					name: 'Migrated Model',
-					modelId: oldModel
-				});
-				this.settings.defaultModelId = 'migrated-model';
-			} else {
-				this.settings.defaultModelId = existingModel.id;
+		// Only run migration if settings version is missing or less than 2
+		if (!this.settings.settingsVersion || this.settings.settingsVersion < 2) {
+			if (loadedData && 'model' in loadedData && typeof loadedData.model === 'string') {
+				// Old format detected, migrate to new format
+				const oldModel = loadedData.model;
+				// Check if this model already exists in the default models
+				const existingModel = this.settings.models.find(m => m.modelId === oldModel);
+				if (!existingModel) {
+					// Add the old model as a custom model
+					this.settings.models.push({
+						id: 'migrated-model',
+						name: 'Migrated Model',
+						modelId: oldModel
+					});
+					this.settings.defaultModelId = 'migrated-model';
+				} else {
+					this.settings.defaultModelId = existingModel.id;
+				}
 			}
+			// Update settings version to 2
+			this.settings.settingsVersion = 2;
 			// Save migrated settings
 			await this.saveSettings();
 		}
@@ -231,6 +232,58 @@ export default class OpenRouterPlugin extends Plugin {
 			// Update status bar
 			this.updateStatusBar();
 		}
+	}
+
+	// Helper Methods
+
+	/**
+	 * Checks if text is not empty after trimming
+	 */
+	private isNotEmpty(text: string | undefined): boolean {
+		return !!(text && text.trim() !== '');
+	}
+
+	/**
+	 * Handles errors consistently with user notifications
+	 */
+	private handleError(error: unknown, context: string): void {
+		if (error instanceof Error) {
+			new Notice(`${context}: ${error.message}`, 8000);
+		} else {
+			new Notice(context, 5000);
+		}
+	}
+
+	/**
+	 * Gets model ID from settings or uses fallback
+	 */
+	private getModelIdFromSettings(modelId?: string): string {
+		if (modelId) {
+			const model = this.settings.models.find(m => m.id === modelId);
+			return model?.modelId || CONFIG.FALLBACK_MODEL;
+		}
+		const defaultModel = this.settings.models.find(m => m.id === this.settings.defaultModelId);
+		return defaultModel?.modelId || CONFIG.FALLBACK_MODEL;
+	}
+
+	/**
+	 * Shows prompt modal and handles processing active note with result action modal
+	 */
+	private handleProcessActiveNote(editor: Editor, content: string): void {
+		new PromptModal(this.app, async (prompt, modelId) => {
+			await this.processText(content, prompt, async (result) => {
+				const choice = await this.showResultActionModal(result);
+				if (choice === 'replace') {
+					editor.setValue(result);
+					new Notice('Note replaced with AI response');
+				} else if (choice === 'cursor') {
+					const cursor = editor.getCursor();
+					editor.replaceRange('\n\n' + result, cursor);
+				} else if (choice === 'new-note') {
+					await this.createNewNote(result, prompt, this.lastUsedModel);
+				}
+			}, modelId);
+		}, this.settings.models, this.settings.defaultModelId, 'Process Active Note').open();
 	}
 
 	private updateStatusBar(): void {
@@ -256,6 +309,15 @@ export default class OpenRouterPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Processes text with AI based on user prompt
+	 * Handles security scanning, rate limiting, and API communication
+	 * @param text - Content to process (empty string for pure generation)
+	 * @param prompt - User's instruction to the AI
+	 * @param onSuccess - Callback invoked with AI response upon success
+	 * @param modelId - Optional model override (uses default if not provided)
+	 * @throws Error if API call fails, rate limit exceeded, or security check blocks request
+	 */
 	private async processText(
 		text: string,
 		prompt: string,
@@ -264,7 +326,7 @@ export default class OpenRouterPlugin extends Plugin {
 	): Promise<void> {
 		// Guard against concurrent requests
 		if (this.isProcessing) {
-			new Notice('Another AI request is already in progress. Please wait...');
+			new Notice(MESSAGES.PROCESSING_IN_PROGRESS);
 			return;
 		}
 
@@ -295,7 +357,7 @@ export default class OpenRouterPlugin extends Plugin {
 
 						if (!userConfirmed) {
 							this.isProcessing = false;
-							new Notice('Request cancelled by user.');
+							new Notice(MESSAGES.REQUEST_CANCELLED);
 							return;
 						}
 					}
@@ -334,18 +396,7 @@ export default class OpenRouterPlugin extends Plugin {
 			}
 
 			// Determine which model to use
-			let selectedModel: string;
-			if (modelId) {
-				// User explicitly selected a model
-				const model = this.settings.models.find(m => m.id === modelId);
-				selectedModel = model ? model.modelId : this.settings.models.find(m => m.id === this.settings.defaultModelId)?.modelId || 'google/gemini-flash-1.5';
-			} else {
-				// Use default model
-				const defaultModel = this.settings.models.find(m => m.id === this.settings.defaultModelId);
-				selectedModel = defaultModel ? defaultModel.modelId : 'google/gemini-flash-1.5';
-			}
-
-			// Store for use in createNewNote
+			const selectedModel = this.getModelIdFromSettings(modelId);
 			this.lastUsedModel = selectedModel;
 
 			// Build request
@@ -364,7 +415,7 @@ export default class OpenRouterPlugin extends Plugin {
 
 			// Calculate and display elapsed time
 			const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
-			new Notice(`AI response received! (${elapsedSeconds}s)`);
+			new Notice(`${MESSAGES.RESPONSE_RECEIVED} (${elapsedSeconds}s)`);
 
 			// Update status bar to reflect used request
 			this.updateStatusBar();
@@ -376,11 +427,7 @@ export default class OpenRouterPlugin extends Plugin {
 			if (notice) {
 				notice.hide();
 			}
-			if (error instanceof Error) {
-				new Notice(`Error: ${error.message}`, 8000);
-			} else {
-				new Notice('An unexpected error occurred.', 5000);
-			}
+			this.handleError(error, 'An unexpected error occurred');
 		} finally {
 			this.isProcessing = false;
 		}
@@ -390,11 +437,28 @@ export default class OpenRouterPlugin extends Plugin {
 		try {
 			// Generate filename with timestamp
 			const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-			const filename = `AI-Note-${timestamp}.md`;
+			const baseFilename = `AI-Note-${timestamp}`;
 
 			// Determine folder path
 			const folderPath = this.settings.outputFolder || '';
-			const fullPath = folderPath ? `${folderPath}/${filename}` : filename;
+
+			// Ensure folder exists
+			if (folderPath) {
+				const folder = this.app.vault.getAbstractFileByPath(folderPath);
+				if (!folder) {
+					await this.app.vault.createFolder(folderPath);
+				}
+			}
+
+			// Handle duplicate filenames
+			let filename = `${baseFilename}.md`;
+			let fullPath = folderPath ? `${folderPath}/${filename}` : filename;
+			let counter = 1;
+			while (this.app.vault.getAbstractFileByPath(fullPath)) {
+				filename = `${baseFilename}-${counter}.md`;
+				fullPath = folderPath ? `${folderPath}/${filename}` : filename;
+				counter++;
+			}
 
 			// Get model name for frontmatter
 			const defaultModel = this.settings.models.find(m => m.id === this.settings.defaultModelId);
@@ -423,11 +487,7 @@ export default class OpenRouterPlugin extends Plugin {
 			new Notice(`Created new note: ${filename}`);
 
 		} catch (error) {
-			if (error instanceof Error) {
-				new Notice(`Failed to create note: ${error.message}`);
-			} else {
-				new Notice('Failed to create note.');
-			}
+			this.handleError(error, MESSAGES.CREATE_NOTE_FAILED);
 		}
 	}
 
@@ -461,24 +521,25 @@ class ResultActionModal extends Modal {
 
 		contentEl.createEl('p', { text: 'AI response generated. How would you like to proceed?' });
 
-		// Preview of result (first 200 chars)
-		const preview = this.result.slice(0, 200) + (this.result.length > 200 ? '...' : '');
+		// Preview of result
+		const preview = this.result.slice(0, CONFIG.PREVIEW_MAX_LENGTH) + (this.result.length > CONFIG.PREVIEW_MAX_LENGTH ? '...' : '');
 		const previewEl = contentEl.createEl('div', {
 			attr: {
-				style: 'background: var(--background-secondary); padding: 1em; margin: 1em 0; border-radius: 4px; max-height: 150px; overflow-y: auto; font-family: var(--font-monospace); font-size: 0.9em; white-space: pre-wrap;'
+				style: STYLES.PREVIEW_CONTAINER
 			}
 		});
 		previewEl.textContent = preview;
 
 		// Buttons container
 		const buttonContainer = contentEl.createDiv({
-			attr: { style: 'display: flex; gap: 0.5em; justify-content: flex-end; margin-top: 1em;' }
+			attr: { style: STYLES.BUTTON_CONTAINER }
 		});
 
 		// Replace note button
 		const replaceButton = buttonContainer.createEl('button', {
 			text: 'Replace note',
-			cls: 'mod-warning'
+			cls: 'mod-warning',
+			attr: { 'aria-label': 'Replace entire note with AI response' }
 		});
 		replaceButton.addEventListener('click', () => {
 			this.close();
@@ -488,7 +549,8 @@ class ResultActionModal extends Modal {
 		// Insert at cursor button
 		const cursorButton = buttonContainer.createEl('button', {
 			text: 'Insert at cursor',
-			cls: 'mod-cta'
+			cls: 'mod-cta',
+			attr: { 'aria-label': 'Insert AI response at current cursor position' }
 		});
 		cursorButton.addEventListener('click', () => {
 			this.close();
@@ -497,7 +559,8 @@ class ResultActionModal extends Modal {
 
 		// Create new note button
 		const newNoteButton = buttonContainer.createEl('button', {
-			text: 'Create new note'
+			text: 'Create new note',
+			attr: { 'aria-label': 'Create new note with AI response' }
 		});
 		newNoteButton.addEventListener('click', () => {
 			this.close();
@@ -505,7 +568,10 @@ class ResultActionModal extends Modal {
 		});
 
 		// Cancel button
-		const cancelButton = buttonContainer.createEl('button', { text: 'Cancel' });
+		const cancelButton = buttonContainer.createEl('button', {
+			text: 'Cancel',
+			attr: { 'aria-label': 'Cancel and discard AI response' }
+		});
 		cancelButton.addEventListener('click', () => {
 			this.close();
 			this.onChoose('cancel');
@@ -793,8 +859,8 @@ class OpenRouterSettingTab extends PluginSettingTab {
 				.addOption('warn', 'Warn and ask for confirmation')
 				.addOption('block', 'Block and prevent sending')
 				.setValue(this.plugin.settings.scanAction)
-				.onChange(async (value: 'warn' | 'block') => {
-					this.plugin.settings.scanAction = value;
+				.onChange(async (value) => {
+					this.plugin.settings.scanAction = value as 'warn' | 'block';
 					await this.plugin.saveSettings();
 				}));
 
